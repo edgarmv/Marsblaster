@@ -46,8 +46,11 @@ public class OVRTrackedRemote : MonoBehaviour
 	private bool m_isOculusGo;
 	private bool m_prevControllerConnected = false;
 	private bool m_prevControllerConnectedCached = false;
+    
+    public GunController m_gunController;
+    public float projectileSpeed = 20f;
 
-	void Start()
+    void Start()
 	{
 		m_isOculusGo = (OVRPlugin.productName == "Oculus Go");
 	}
@@ -69,5 +72,18 @@ public class OVRTrackedRemote : MonoBehaviour
 		{
 			return;
 		}
-	}
+
+        if (OVRInput.GetUp(OVRInput.Button.PrimaryIndexTrigger))
+        {
+            if (m_gunController != null)
+            {
+                Debug.Log("OVRGearVrController: Shooting projectile");
+                m_gunController.ShootProjectile(projectileSpeed);
+            }
+            else
+            {
+                Debug.Log("OVRGearVrController: m_gunController is null");
+            }
+        }
+    }
 }

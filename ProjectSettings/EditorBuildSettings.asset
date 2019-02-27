@@ -8,4 +8,13 @@ EditorBuildSettings:
   - enabled: 0
     path: 
     guid: 00000000000000000000000000000000
+  - enabled: 0
+    path: Assets/main.unity
+    guid: 296754c1f4e43157e823a15d13daf613
+  - enabled: 0
+    path: Assets/Scene2.unity
+    guid: 66034ce4152a2af4888b9cf7582d867a
+  - enabled: 1
+    path: Assets/AlienGame.unity
+    guid: c2b11384fd2e5014cb00ca37883c90e4
   m_configObjects: {}
