@@ -10,7 +10,7 @@ public struct QuestionData
     public List<int> alternatives;
 }
 
-public class ChangeTextScript : MonoBehaviour
+public class QuestionGenerator : MonoBehaviour
 {
     public TextMesh Question;
     public TextMesh Alternative1;
