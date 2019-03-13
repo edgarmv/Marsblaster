@@ -48,7 +48,6 @@ public class OVRTrackedRemote : MonoBehaviour
 	private bool m_prevControllerConnectedCached = false;
     
     public GunController m_gunController;
-    public float projectileSpeed = 20f;
 
     void Start()
 	{
@@ -78,7 +77,7 @@ public class OVRTrackedRemote : MonoBehaviour
             if (m_gunController != null)
             {
                 Debug.Log("OVRGearVrController: Shooting projectile");
-                m_gunController.ShootProjectile(projectileSpeed);
+                m_gunController.ShootProjectile();
             }
             else
             {

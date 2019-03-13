@@ -9,16 +9,15 @@ public class GunController : MonoBehaviour
 
     // Use this for initialization
     void Start()
-    {
-        this.transform.forward = Camera.main.transform.forward;
+    {      
     }
 
-    public void ShootProjectile(float projectileSpeed)
+    public void ShootProjectile()
     {
         GameObject projectile = Instantiate(projectilePrefab);
-        projectile.transform.position = this.transform.position;
-
-        Rigidbody rb = projectile.GetComponent<Rigidbody>();
-        rb.velocity = this.transform.forward * projectileSpeed;
+        projectile.transform.position = OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTrackedRemote);
+        projectile.transform.Translate(Vector3.up * 1.72f);
+        projectile.transform.rotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.RTrackedRemote);
+        // Debug.Log(OVRInput.GetLocalControllerRotation(OVRInput.Controller.RTrackedRemote));
     }
 }
