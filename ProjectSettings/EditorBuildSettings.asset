@@ -14,7 +14,13 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scene2.unity
     guid: 66034ce4152a2af4888b9cf7582d867a
-  - enabled: 1
+  - enabled: 0
     path: Assets/AlienGame.unity
     guid: c2b11384fd2e5014cb00ca37883c90e4
+  - enabled: 0
+    path: Assets/inside.unity
+    guid: 1ac9e680e9998ce41b05d16e868a9fcc
+  - enabled: 1
+    path: Assets/Mars.unity
+    guid: e46dd9d0412f5c841a2f97d5d943b7e3
   m_configObjects: {}

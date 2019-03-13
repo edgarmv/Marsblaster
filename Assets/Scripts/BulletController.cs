@@ -6,17 +6,18 @@ using UnityEngine.UI;
 public class BulletController : MonoBehaviour
 {
     public float projectileSpeed;
+    private Rigidbody rb;
 
     // Start is called before the first frame update
     void Start()
     {
-        projectileSpeed = 10;
+        projectileSpeed = 15;
+        rb = this.GetComponent<Rigidbody>();
     }
 
     // Update is called once per frame
     void Update()
     {
-        Rigidbody rb = this.GetComponent<Rigidbody>();
         rb.velocity = this.transform.forward * projectileSpeed;
         // Debug.Log(rb.velocity);
     }
