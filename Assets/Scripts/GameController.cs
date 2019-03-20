@@ -4,6 +4,7 @@ using UnityEngine;
 using System;
 using ExtensionMethods;
 using UnityEngine.UI;
+using System.Timers;
 
 public struct QuestionData
 {
@@ -17,14 +18,26 @@ public class GameController : MonoBehaviour
     public TextMesh Alternative1;
     public TextMesh Alternative2;
     public TextMesh Alternative3;
+    public TextMesh splashText;
 
     public GameObject AlienShip;
-    public Text scoreBoard;
+    public TextMesh scoreBoard;
     private int score = 0;
     private GameObject ship1;
     private GameObject ship2;
     private GameObject ship3;
+    public GameObject spawnPoint1;
+    public GameObject spawnPoint2;
+    public GameObject spawnPoint3;
+    public GameObject movePoint1;
+    public GameObject movePoint2;
+    public GameObject movePoint3;
     private int correctAnswer;
+    private static Timer shipTimer = new System.Timers.Timer();
+    private static Timer scoreTimer = new System.Timers.Timer();
+    private static Timer splashTimer = new System.Timers.Timer();
+    private static Boolean shipSpawn = false;
+    private static int scoreMultiplier = 3;
     
     private static System.Random randomGenerator = new System.Random();
 
@@ -32,17 +45,57 @@ public class GameController : MonoBehaviour
     {
         scoreBoard.text = "Score: " + score.ToString();
         StartGame();
+        shipTimer.Elapsed += new ElapsedEventHandler(OnShipTimedEvent);
+        shipTimer.Interval = 5000;
+
+        scoreTimer.Elapsed += new ElapsedEventHandler(OnScoreTimedEvent);
+        scoreTimer.Interval = 10000;
+
+        splashTimer.Elapsed += new ElapsedEventHandler(OnSplashTimedEvent);
+        splashTimer.Interval = 500;
+    }
+
+    private static void OnShipTimedEvent(object source, ElapsedEventArgs e)
+    {
+        shipSpawn = true;
+    }
+
+    private static void OnScoreTimedEvent(object source, ElapsedEventArgs e)
+    {
+        if(scoreMultiplier > 1)
+        {
+            scoreMultiplier--;
+        }
+        else
+        {
+            scoreTimer.Enabled = false;
+        }
+    }
+
+    // THIS DOESN'T WORK, NON STATIC FIELDS FROM STATIC FUNCTION
+    private static void OnSplashTimedEvent(object source, ElapsedEventArgs e)
+    {
+        splashTimer.Enabled = false;
+        splashText.text = "";
     }
 
     void StartGame()
     {
         SpawnShips();
         CreateNewQuestion();
+        shipTimer.Enabled = false;
+        scoreTimer.Enabled = true;
+        scoreMultiplier = 3;
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (shipSpawn)
+        {
+            StartGame();
+            shipSpawn = false;
+        }
     }
 
     void CreateNewQuestion() {
@@ -128,32 +181,51 @@ public class GameController : MonoBehaviour
 
     public void gotHit(bool hit){
         if (hit){
-            score++;
+            score += 5*scoreMultiplier;
+            //splashTimer.Enabled = true;
+            //splashText.text = 5 * scoreMultiplier;
             scoreBoard.text = "Score: " + score.ToString();
         }
         Destroy(ship1);
         Destroy(ship2);
         Destroy(ship3);
+        shipTimer.Enabled = true;
+        scoreTimer.Enabled = false;
     }
 
     public void SpawnShips()
     {
-        ship1 = Instantiate(AlienShip);
-        ship1.transform.Translate(Vector3.forward * 10);
+        ship1 = Instantiate(AlienShip, spawnPoint1.transform);
         ship1.GetComponent<ShipCollider>().controller = this;
         Alternative1 = ship1.gameObject.transform.GetChild(0).GetComponent<TextMesh>();
 
-        ship2 = Instantiate(AlienShip);
-        ship2.transform.Translate(Vector3.forward * 10);
-        ship2.transform.Translate(Vector3.left * 10);
+        ship2 = Instantiate(AlienShip, spawnPoint2.transform);
         ship2.GetComponent<ShipCollider>().controller = this;
         Alternative2 = ship2.gameObject.transform.GetChild(0).GetComponent<TextMesh>();
 
-        ship3 = Instantiate(AlienShip);
-        ship3.transform.Translate(Vector3.forward * 10);
-        ship3.transform.Translate(Vector3.right * 10);
+        ship3 = Instantiate(AlienShip, spawnPoint3.transform);
         ship3.GetComponent<ShipCollider>().controller = this;
         Alternative3 = ship3.gameObject.transform.GetChild(0).GetComponent<TextMesh>();
+
+        moveShip(ship1, movePoint1);
+        moveShip(ship2, movePoint2);
+        moveShip(ship3, movePoint3);
+    }
+
+    public void moveShip(GameObject ship, GameObject point)
+    {
+        ship.GetComponent<ShipCollider>().rotateToPoint(point.transform);
+        ship.GetComponent<ShipCollider>().SetDestination(point.transform.position, 10f);
+    }
+
+    public void ship2Move()
+    {
+
+    }
+
+    public void ship3Move()
+    {
+
     }
 }
 

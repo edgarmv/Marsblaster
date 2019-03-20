@@ -9,16 +9,34 @@ public class ShipCollider : MonoBehaviour
     public int shipAnswer;
     public int correctAnswer;
 
-    // Start is called before the first frame update
+    float t;
+    Vector3 startPosition;
+    Vector3 target;
+    float timeToReachTarget;
+
     void Start()
     {
-
     }
 
     // Update is called once per frame
     void Update()
     {
+        t += Time.deltaTime / timeToReachTarget;
+        transform.position = Vector3.Lerp(startPosition, target, t);
+    }
 
+    public void SetDestination(Vector3 destination, float time)
+    {
+        t = 0;
+        startPosition = transform.position;
+        timeToReachTarget = time;
+        target = destination;
+    }
+
+    public void rotateToPoint(Transform point)
+    {
+        transform.LookAt(point);
+        this.gameObject.transform.GetChild(0).GetComponent<TextMesh>().transform.Rotate(new Vector3(0, 180, 0), Space.Self);
     }
 
     public bool isCorrect()
