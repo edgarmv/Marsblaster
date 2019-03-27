@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="AudioFile" id="{022b5e0b-2c87-4ec5-aac5-ccb2a6b082a8}">
+        <property name="assetPath">
+            <value>Cymbal_revers.wav</value>
+        </property>
+        <property name="isStreaming">
+            <value>true</value>
+        </property>
+        <property name="frequencyInKHz">
+            <value>44.0999985</value>
+        </property>
+        <property name="channelCount">
+            <value>2</value>
+        </property>
+        <property name="length">
+            <value>13.364353741496599</value>
+        </property>
+        <relationship name="masterAssetFolder">
+            <destination>{ba2bc0f1-5f3d-414d-a80f-a037a2def091}</destination>
+        </relationship>
+    </object>
+</objects>

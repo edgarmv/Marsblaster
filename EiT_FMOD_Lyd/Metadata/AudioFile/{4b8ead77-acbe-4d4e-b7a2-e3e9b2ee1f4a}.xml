@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="AudioFile" id="{4b8ead77-acbe-4d4e-b7a2-e3e9b2ee1f4a}">
+        <property name="assetPath">
+            <value>Skyvedoer_aapnes_6.wav</value>
+        </property>
+        <property name="frequencyInKHz">
+            <value>44.0999985</value>
+        </property>
+        <property name="channelCount">
+            <value>2</value>
+        </property>
+        <property name="length">
+            <value>1.4536281179138322</value>
+        </property>
+        <relationship name="masterAssetFolder">
+            <destination>{ba2bc0f1-5f3d-414d-a80f-a037a2def091}</destination>
+        </relationship>
+    </object>
+</objects>

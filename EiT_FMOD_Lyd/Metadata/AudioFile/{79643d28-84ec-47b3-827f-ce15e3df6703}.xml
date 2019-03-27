@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="AudioFile" id="{79643d28-84ec-47b3-827f-ce15e3df6703}">
+        <property name="assetPath">
+            <value>Briller_faller_2.wav</value>
+        </property>
+        <property name="frequencyInKHz">
+            <value>44.0999985</value>
+        </property>
+        <property name="channelCount">
+            <value>2</value>
+        </property>
+        <property name="length">
+            <value>3.0624943310657597</value>
+        </property>
+        <relationship name="masterAssetFolder">
+            <destination>{ba2bc0f1-5f3d-414d-a80f-a037a2def091}</destination>
+        </relationship>
+    </object>
+</objects>

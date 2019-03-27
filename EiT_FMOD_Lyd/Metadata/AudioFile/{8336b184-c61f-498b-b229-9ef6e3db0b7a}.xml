@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="AudioFile" id="{8336b184-c61f-498b-b229-9ef6e3db0b7a}">
+        <property name="assetPath">
+            <value>Laser_doer_deaktivert_2.wav</value>
+        </property>
+        <property name="frequencyInKHz">
+            <value>44.0999985</value>
+        </property>
+        <property name="channelCount">
+            <value>2</value>
+        </property>
+        <property name="length">
+            <value>1.0995011337868481</value>
+        </property>
+        <relationship name="masterAssetFolder">
+            <destination>{ba2bc0f1-5f3d-414d-a80f-a037a2def091}</destination>
+        </relationship>
+    </object>
+</objects>

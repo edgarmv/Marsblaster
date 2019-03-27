@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="ParameterPreset" id="{7a2b8c09-950c-4ef3-9100-49a3a9e3479d}">
+        <property name="name">
+            <value>Fiender</value>
+        </property>
+        <relationship name="folder">
+            <destination>{a9c4b489-8d3a-44dd-84a9-ebbb96979ead}</destination>
+        </relationship>
+        <relationship name="parameter">
+            <destination>{990821e5-ea48-4142-89c5-337e99959609}</destination>
+        </relationship>
+    </object>
+    <object class="GameParameter" id="{990821e5-ea48-4142-89c5-337e99959609}">
+        <property name="maximum">
+            <value>30</value>
+        </property>
+        <property name="initialValue">
+            <value>0</value>
+        </property>
+    </object>
+</objects>
