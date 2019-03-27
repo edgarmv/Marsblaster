@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class ShipCollider : MonoBehaviour
+public class ShipController : MonoBehaviour
 {
     public GameController controller;
     public int shipAnswer;
@@ -14,8 +14,15 @@ public class ShipCollider : MonoBehaviour
     Vector3 target;
     float timeToReachTarget;
 
+    public float flashTime;
+    Color origionalColor;
+    public MeshRenderer renderer;
+
     void Start()
     {
+        flashTime = 0.5f;
+        renderer = GetComponent<MeshRenderer>();
+        origionalColor = renderer.material.color;
     }
 
     // Update is called once per frame
@@ -49,6 +56,17 @@ public class ShipCollider : MonoBehaviour
         if (collision.gameObject.tag == "Bullet")
         {
             controller.gotHit(isCorrect());
+            FlashRed();
         }
+    }
+
+    public void FlashRed()
+    {
+        renderer.material.color = Color.red;
+        Invoke("ResetColor", flashTime);
+    }
+    void ResetColor()
+    {
+        renderer.material.color = origionalColor;
     }
 }

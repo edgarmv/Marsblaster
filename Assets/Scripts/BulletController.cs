@@ -11,7 +11,7 @@ public class BulletController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        projectileSpeed = 15;
+        projectileSpeed = 30;
         rb = this.GetComponent<Rigidbody>();
     }
 
