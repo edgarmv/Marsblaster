@@ -531,7 +531,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bef789741dee065899aa2c7d6e2f9492, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_SceneToLoad: AlienGame
+  m_SceneToLoad: Mars
   m_CameraFade: {fileID: 1282095687}
   m_SelectionRadial: {fileID: 1282095677}
   m_InteractiveItem: {fileID: 413993880}
