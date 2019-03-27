@@ -144,13 +144,13 @@ public class ControllerRaycaster : MonoBehaviour
                 Debug.Log("Update worldEndPoint hit");
             }
             m_CurrentInteractible = interactible;
-        Debug.Log("eye5");
+            Debug.Log("eye5");
 
 
             // If we hit an interactive item and it's not the same as the last interactive item, then call Over
-            if (interactible && interactible != m_LastInteractible)
-                Debug.Log("eyeraycaster");
+            if (interactible && interactible != m_LastInteractible) {
                 interactible.Over(); 
+            }
 
             // Deactive the last interactive item 
             if (interactible != m_LastInteractible)
@@ -161,7 +161,7 @@ public class ControllerRaycaster : MonoBehaviour
             // Something was hit, set at the hit position.
             if (m_Reticle)
                 m_Reticle.SetPosition(hit);
-        Debug.Log("eye6");
+            Debug.Log("eye6");
 
             if (OnRaycasthit != null)
                 OnRaycasthit(hit);
