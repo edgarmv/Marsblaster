@@ -14,17 +14,18 @@ public struct QuestionData
 
 public class GameController : MonoBehaviour
 {
-    public TextMesh Question;
     private TextMesh Alternative1;
     private TextMesh Alternative2;
     private TextMesh Alternative3;
+    public TextMesh Question;
     public TextMesh scoreBoard;
+    public TextMesh timeText;
     public static TextMesh splashText;
 
-    public GameObject AlienShip;
     private GameObject ship1;
     private GameObject ship2;
     private GameObject ship3;
+    public GameObject AlienShip;
     public GameObject spawnPoint1;
     public GameObject spawnPoint2;
     public GameObject spawnPoint3;
@@ -38,10 +39,12 @@ public class GameController : MonoBehaviour
     private int correctAnswer;
     private int score = 0;
     private static int scoreMultiplier = 3;
+    private static int roundTime;
 
     private static Timer shipTimer = new System.Timers.Timer();
     private static Timer scoreTimer = new System.Timers.Timer();
     private static Timer splashTimer = new System.Timers.Timer();
+    private static Timer gameTimer = new System.Timers.Timer();
 
     private static Boolean shipSpawn = false;
     
@@ -60,6 +63,11 @@ public class GameController : MonoBehaviour
         splashTimer.Elapsed += new ElapsedEventHandler(OnSplashTimedEvent);
         splashTimer.Interval = 1000;
 
+        gameTimer.Elapsed += new ElapsedEventHandler(OnGameTimedEvent);
+        gameTimer.Interval = 1000;
+        gameTimer.Enabled = true;
+
+        roundTime = 180;
         splashText = GameObject.Find("SplashText").GetComponent<TextMesh>();
     }
 
@@ -79,11 +87,23 @@ public class GameController : MonoBehaviour
             scoreTimer.Enabled = false;
         }
     }
-    
+
     private static void OnSplashTimedEvent(object source, ElapsedEventArgs e)
     {
         splashText.text = "";
         splashTimer.Enabled = false;
+    }
+
+    private static void OnGameTimedEvent(object source, ElapsedEventArgs e)
+    {
+        if (roundTime > 0)
+        {
+            roundTime--;
+        }
+        else
+        {
+            gameTimer.Enabled = false;
+        }
     }
 
     void StartGame()
@@ -98,11 +118,17 @@ public class GameController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (shipSpawn)
+        if (shipSpawn && roundTime > 0)
         {
             StartGame();
             shipSpawn = false;
         }
+        if(ship1 != null && roundTime == 0)
+        {
+            RemoveShips();
+        }
+        timeText.text = "Time: " + roundTime;
+
     }
 
     void CreateNewQuestion() {
@@ -124,7 +150,6 @@ public class GameController : MonoBehaviour
     /* Returns true or false with 50/50 probability */
     bool randomBool() {
         bool res = randomGenerator.Next(100) < 50 ? true : false;
-        Debug.Log(res);
         return res;
     }
 
@@ -190,25 +215,11 @@ public class GameController : MonoBehaviour
         if (hit){
             score += 5*scoreMultiplier;
             splashTimer.Enabled = true;
-            scoreBoard.text = "Score: " + score.ToString();
-            splashText.text = "+ " + (5 * scoreMultiplier).ToString();
+            scoreBoard.text = "Score: " + score;
+            splashText.text = "+ " + (5 * scoreMultiplier);
         }
 
-        moveShip(ship1, leavePoint1, 5f);
-        moveShip(ship2, leavePoint2, 5f);
-        moveShip(ship3, leavePoint3, 5f);
-
-        Alternative1.text = "";
-        Alternative2.text = "";
-        Alternative3.text = "";
-
-        ship1.GetComponent<Collider>().enabled = false;
-        ship2.GetComponent<Collider>().enabled = false;
-        ship3.GetComponent<Collider>().enabled = false;
-
-        Destroy(ship1, 5);
-        Destroy(ship2, 5);
-        Destroy(ship3, 5);
+        RemoveShips();
 
         shipTimer.Enabled = true;
         scoreTimer.Enabled = false;
@@ -231,6 +242,25 @@ public class GameController : MonoBehaviour
         moveShip(ship1, movePoint1, 10f);
         moveShip(ship2, movePoint2, 10f);
         moveShip(ship3, movePoint3, 10f);
+    }
+
+    public void RemoveShips()
+    {
+        moveShip(ship1, leavePoint1, 5f);
+        moveShip(ship2, leavePoint2, 5f);
+        moveShip(ship3, leavePoint3, 5f);
+
+        Alternative1.text = "";
+        Alternative2.text = "";
+        Alternative3.text = "";
+
+        ship1.GetComponent<Collider>().enabled = false;
+        ship2.GetComponent<Collider>().enabled = false;
+        ship3.GetComponent<Collider>().enabled = false;
+
+        Destroy(ship1, 5);
+        Destroy(ship2, 5);
+        Destroy(ship3, 5);
     }
 
     public void moveShip(GameObject ship, GameObject point, float time)
