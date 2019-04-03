@@ -1,20 +1,44 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Collections;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Networking;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace FMODUnity
 {
     [AddComponentMenu("")]
     public class RuntimeManager : MonoBehaviour
     {
-
         static SystemNotInitializedException initException = null;
         static RuntimeManager instance;
-        static bool isQuitting = false;
+
         [SerializeField]
         FMODPlatform fmodPlatform;
+
+        [AOT.MonoPInvokeCallback(typeof(FMOD.DEBUG_CALLBACK))]
+        static FMOD.RESULT DEBUG_CALLBACK(FMOD.DEBUG_FLAGS flags, FMOD.StringWrapper file, int line, FMOD.StringWrapper func, FMOD.StringWrapper message)
+        {
+            if (flags == FMOD.DEBUG_FLAGS.ERROR)
+            {
+                Debug.LogError(string.Format(("[FMOD] {0} : {1}"), (string)func, (string)message));
+            }
+            else if (flags == FMOD.DEBUG_FLAGS.WARNING)
+            {
+                Debug.LogWarning(string.Format(("[FMOD] {0} : {1}"), (string)func, (string)message));
+            }
+            else if (flags == FMOD.DEBUG_FLAGS.LOG)
+            {
+                Debug.Log(string.Format(("[FMOD] {0} : {1}"), (string)func, (string)message));
+            }
+            return FMOD.RESULT.OK;
+        }
+
         static RuntimeManager Instance
         {
             get
@@ -23,37 +47,42 @@ namespace FMODUnity
                 {
                     throw initException;
                 }
-                if (isQuitting)
-                {
-                    throw new Exception("FMOD Studio attempted access by script to RuntimeManager while application is quitting");
-                }
 
                 if (instance == null)
                 {
-                    var existing = FindObjectOfType(typeof(RuntimeManager)) as RuntimeManager;
-                    if (existing != null)
-                    {
-                        // Older versions of the integration may have leaked the runtime manager game object into the scene,
-                        // which was then serialized. It won't have valid pointers so don't use it.
-                        if (existing.cachedPointers[0] != 0)
-                        {
-                            instance = existing;
-                            instance.studioSystem = new FMOD.Studio.System((IntPtr)instance.cachedPointers[0]);
-                            instance.lowlevelSystem = new FMOD.System((IntPtr)instance.cachedPointers[1]);
-                            instance.mixerHead = new FMOD.DSP((IntPtr)instance.cachedPointers[2]);
-                            return instance;
-                        }
-                    }                    
+                    FMOD.RESULT initResult = FMOD.RESULT.OK; // Initialize can return an error code if it falls back to NO_SOUND, throw it as a non-cached exception
 
-                    var gameObject = new GameObject("FMOD.UnityItegration.RuntimeManager");
+
+                    var existing = FindObjectsOfType(typeof(RuntimeManager)) as RuntimeManager[];
+                    foreach (var iter in existing)
+                    {
+                        if (existing != null)
+                        {
+                            // Older versions of the integration may have leaked the runtime manager game object into the scene,
+                            // which was then serialized. It won't have valid pointers so don't use it.
+                            if (iter.cachedPointers[0] != 0)
+                            {
+                                instance = iter;
+                                instance.studioSystem.handle = ((IntPtr)instance.cachedPointers[0]);
+                                instance.lowlevelSystem.handle = ((IntPtr)instance.cachedPointers[1]);
+                            }
+                            GameObject.DestroyImmediate(iter);
+                        }
+                    }
+
+                    var gameObject = new GameObject("FMOD.UnityIntegration.RuntimeManager");
                     instance = gameObject.AddComponent<RuntimeManager>();
-                    DontDestroyOnLoad(gameObject);
-                    gameObject.hideFlags = HideFlags.HideInHierarchy;
+
+                    if (Application.isPlaying) // This class is used in edit mode by the Timeline auditioning system
+                    {
+                        DontDestroyOnLoad(gameObject);
+                    }
+                    gameObject.hideFlags = HideFlags.HideAndDontSave;
 
                     try
                     {
                         #if UNITY_ANDROID && !UNITY_EDITOR
-            
+
                         // First, obtain the current activity context
                         AndroidJavaObject activity = null;
                         using (var activityClass = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
@@ -69,14 +98,14 @@ namespace FMODUnity
                             }
                             else
                             {
-                                UnityEngine.Debug.LogWarning("FMOD Studio: Cannot initialiaze Java wrapper");
+                                UnityEngine.Debug.LogWarning("[FMOD] Cannot initialize Java wrapper");
                             }
                         }
                         
                         #endif
 
                         RuntimeUtils.EnforceLibraryOrder();
-                        instance.Initialiase(false);
+                        initResult = instance.Initialize();
                     }
                     catch (Exception e)
                     {
@@ -86,6 +115,11 @@ namespace FMODUnity
                             initException = new SystemNotInitializedException(e);
                         }
                         throw initException;
+                    }
+
+                    if (initResult != FMOD.RESULT.OK)
+                    {
+                        throw new SystemNotInitializedException(initResult, "Output forced to NO SOUND mode");
                     }
                 }
 
@@ -110,8 +144,8 @@ namespace FMODUnity
         FMOD.DSP mixerHead;
 
         [SerializeField]
-        private long[] cachedPointers = new long[3];
-        
+        private long[] cachedPointers = new long[2];
+
         struct LoadedBank
         {
             public FMOD.Studio.Bank Bank;
@@ -140,181 +174,121 @@ namespace FMODUnity
         {
             if (result != FMOD.RESULT.OK)
             {
-                if (studioSystem != null)
+                if (studioSystem.isValid())
                 {
                     studioSystem.release();
-                    studioSystem = null;
+                    studioSystem.clearHandle();
                 }
                 throw new SystemNotInitializedException(result, cause);
             }
         }
 
-        void Initialiase(bool forceNoNetwork)
+        FMOD.RESULT Initialize()
         {
-            UnityEngine.Debug.Log("FMOD Studio: Creating runtime system instance");
+            #if UNITY_EDITOR
+                #if UNITY_2017_2_OR_NEWER
+            EditorApplication.playModeStateChanged += HandlePlayModeStateChange;
+                #elif UNITY_2017_1_OR_NEWER
+            EditorApplication.playmodeStateChanged += HandleOnPlayModeChanged;
+                #endif // UNITY_2017_2_OR_NEWER
+            #endif // UNITY_EDITOR
 
-            FMOD.RESULT result;
-            result = FMOD.Studio.System.create(out studioSystem);
-            CheckInitResult(result, "Creating System Object");
-            studioSystem.getLowLevelSystem(out lowlevelSystem);
-
+            FMOD.RESULT result = FMOD.RESULT.OK;
+            FMOD.RESULT initResult = FMOD.RESULT.OK;
             Settings fmodSettings = Settings.Instance;
-            fmodPlatform = RuntimeUtils.GetCurrentPlatform();            
+            fmodPlatform = RuntimeUtils.GetCurrentPlatform();
+
+            int sampleRate = fmodSettings.GetSampleRate(fmodPlatform);
+            int realChannels = Math.Min(fmodSettings.GetRealChannels(fmodPlatform), 256); // Prior to 1.08.10 we didn't clamp this properly in the settings screen
+            int virtualChannels = fmodSettings.GetVirtualChannels(fmodPlatform);
+            FMOD.SPEAKERMODE speakerMode = (FMOD.SPEAKERMODE)fmodSettings.GetSpeakerMode(fmodPlatform);
+            FMOD.OUTPUTTYPE outputType = FMOD.OUTPUTTYPE.AUTODETECT;
+
+            FMOD.ADVANCEDSETTINGS advancedSettings = new FMOD.ADVANCEDSETTINGS();
+            advancedSettings.randomSeed = (uint)DateTime.Now.Ticks;
+            #if UNITY_EDITOR || UNITY_STANDALONE
+            advancedSettings.maxVorbisCodecs = realChannels;
+            #elif UNITY_XBOXONE
+            advancedSettings.maxXMACodecs = realChannels;
+            #elif UNITY_PS4
+            advancedSettings.maxAT9Codecs = realChannels;
+            #else
+            advancedSettings.maxFADPCMCodecs = realChannels;
+            #endif
+
+            SetThreadAffinity();
 
             #if UNITY_EDITOR || ((UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && DEVELOPMENT_BUILD)
-                result = FMOD.Debug.Initialize(FMOD.DEBUG_FLAGS.LOG, FMOD.DEBUG_MODE.FILE, null, RuntimeUtils.LogFileName);
-                if (result == FMOD.RESULT.ERR_FILE_NOTFOUND)
-                {
-#if UNITY_5_X
-                    Debug.LogWarningFormat("FMOD Studio: Cannot open FMOD debug log file '{0}', logs will be missing for this session.", System.IO.Path.Combine(Application.dataPath, RuntimeUtils.LogFileName));
-#else
-                    Debug.LogWarning(string.Format("FMOD Studio: Cannot open FMOD debug log file '{0}', logs will be missing for this session.", System.IO.Path.Combine(Application.dataPath, RuntimeUtils.LogFileName)));
-#endif
-                }
-                else
-                {
-                    CheckInitResult(result, "Applying debug settings");
-                }
+            result = FMOD.Debug.Initialize(fmodSettings.LoggingLevel, FMOD.DEBUG_MODE.CALLBACK, DEBUG_CALLBACK, null);
+            CheckInitResult(result, "FMOD.Debug.Initialize");
             #endif
 
-            int realChannels = fmodSettings.GetRealChannels(fmodPlatform);
-
-            realChannels = Math.Min(realChannels, 256); // Prior to 1.08.10 we didn't clamp this properly in the settings screen
-
-            result = lowlevelSystem.setSoftwareChannels(realChannels);
-            CheckInitResult(result, "Set software channels");
-            result = lowlevelSystem.setSoftwareFormat(
-                fmodSettings.GetSampleRate(fmodPlatform),
-                (FMOD.SPEAKERMODE)fmodSettings.GetSpeakerMode(fmodPlatform),
-                0 // raw not supported
-                );
-            CheckInitResult(result, "Set software format");
-
-            // Setup up the platforms recommended codec to match the real channel count
-            FMOD.ADVANCEDSETTINGS advancedsettings = new FMOD.ADVANCEDSETTINGS();
-            #if UNITY_EDITOR || UNITY_STANDALONE
-            advancedsettings.maxVorbisCodecs = realChannels;
-            #elif UNITY_IOS || UNITY_ANDROID || UNITY_WP8_1 || UNITY_PSP2 || UNITY_WII || UNITY_SWITCH
-            advancedsettings.maxFADPCMCodecs = realChannels;
-            #elif UNITY_XBOXONE
-            advancedsettings.maxXMACodecs = realChannels;
-            #elif UNITY_PS4
-            advancedsettings.maxAT9Codecs = realChannels;
-            #endif
-
-            #if UNITY_5_0 || UNITY_5_1
-            if (fmodSettings.IsLiveUpdateEnabled(fmodPlatform) && !forceNoNetwork)
-            {
-                UnityEngine.Debug.LogWarning("FMOD Studio: Detected Unity 5, running on port 9265");
-                advancedsettings.profilePort = 9265;
-            }
-            #endif
-
-            advancedsettings.randomSeed = (uint) DateTime.Now.Ticks;
-            result = lowlevelSystem.setAdvancedSettings(ref advancedsettings);
-            CheckInitResult(result, "Set advanced settings");
-
-            FMOD.INITFLAGS lowlevelInitFlags = FMOD.INITFLAGS.NORMAL;
             FMOD.Studio.INITFLAGS studioInitFlags = FMOD.Studio.INITFLAGS.NORMAL | FMOD.Studio.INITFLAGS.DEFERRED_CALLBACKS;
-
-            if (fmodSettings.IsLiveUpdateEnabled(fmodPlatform) && !forceNoNetwork)
+            if (fmodSettings.IsLiveUpdateEnabled(fmodPlatform))
             {
                 studioInitFlags |= FMOD.Studio.INITFLAGS.LIVEUPDATE;
-            }
-            
-            FMOD.RESULT initResult = studioSystem.initialize(
-                fmodSettings.GetVirtualChannels(fmodPlatform),
-                studioInitFlags,
-                lowlevelInitFlags,
-                IntPtr.Zero
-                );
 
-            CheckInitResult(initResult, "Calling initialize");
-
-            // Dummy flush and update to get network state
-            studioSystem.flushCommands();
-            FMOD.RESULT updateResult = studioSystem.update();
-
-            // Restart without liveupdate if there was a socket error
-            if (updateResult == FMOD.RESULT.ERR_NET_SOCKET_ERROR)
-            {
-                studioSystem.release();
-                UnityEngine.Debug.LogWarning("FMOD Studio: Cannot open network port for Live Update, restarting with Live Update disabled. Check for other applications that are running FMOD Studio");
-                Initialiase(true);
-            }
-            else
-            {
-                // Load plugins (before banks)
-		    	#if (UNITY_IOS || UNITY_TVOS) && !UNITY_EDITOR
-				FmodUnityNativePluginInit(lowlevelSystem.getRaw());
-				#else
-                foreach (var pluginName in fmodSettings.Plugins)
-                {
-                    if (string.IsNullOrEmpty(pluginName))
-                        continue;
-                    string pluginPath = RuntimeUtils.GetPluginPath(pluginName);
-                    uint handle;
-                    result = lowlevelSystem.loadPlugin(pluginPath, out handle);
-                    #if UNITY_64 || UNITY_EDITOR_64
-                    // Add a "64" suffix and try again
-                    if (result == FMOD.RESULT.ERR_FILE_BAD || result == FMOD.RESULT.ERR_FILE_NOTFOUND)
-                    {
-                        string pluginPath64 = RuntimeUtils.GetPluginPath(pluginName + "64");
-                        result = lowlevelSystem.loadPlugin(pluginPath64, out handle);
-                    }
-                    #endif
-                    CheckInitResult(result, String.Format("Loading plugin '{0}' from '{1}'", pluginName, pluginPath));
-                    loadedPlugins.Add(pluginName, handle);
-                }
+                #if UNITY_5_0 || UNITY_5_1 // These versions of Unity shipped with FMOD4 profiling enabled consuming our port number.
+                UnityEngine.Debug.LogWarning("[FMOD] Live Update port in-use by Unity, switching to port 9265");
+                advancedSettings.profilePort = 9265;
                 #endif
-                
-                if (fmodSettings.ImportType == ImportType.StreamingAssets)
+            }
+
+retry:
+            result = FMOD.Studio.System.create(out studioSystem);
+            CheckInitResult(result, "FMOD.Studio.System.create");
+
+            result = studioSystem.getLowLevelSystem(out lowlevelSystem);
+            CheckInitResult(result, "FMOD.Studio.System.getLowLevelSystem");
+
+            result = lowlevelSystem.setOutput(outputType);
+            CheckInitResult(result, "FMOD.System.setOutput");
+
+            result = lowlevelSystem.setSoftwareChannels(realChannels);
+            CheckInitResult(result, "FMOD.System.setSoftwareChannels");
+
+            result = lowlevelSystem.setSoftwareFormat(sampleRate, speakerMode, 0);
+            CheckInitResult(result, "FMOD.System.setSoftwareFormat");
+
+            result = lowlevelSystem.setAdvancedSettings(ref advancedSettings);
+            CheckInitResult(result, "FMOD.System.setAdvancedSettings");
+
+            result = studioSystem.initialize(virtualChannels, studioInitFlags, FMOD.INITFLAGS.NORMAL, IntPtr.Zero);
+            if (result != FMOD.RESULT.OK && initResult == FMOD.RESULT.OK)
+            {
+                initResult = result; // Save this to throw at the end (we'll attempt NO SOUND to shield ourselves from unexpected device failures)
+                outputType = FMOD.OUTPUTTYPE.NOSOUND;
+                UnityEngine.Debug.LogErrorFormat("[FMOD] Studio::System::initialize returned {0}, defaulting to no-sound mode.", result.ToString());
+
+                goto retry;
+            }
+            CheckInitResult(result, "Studio::System::initialize");
+
+            // Test network functionality triggered during System::update
+            if ((studioInitFlags & FMOD.Studio.INITFLAGS.LIVEUPDATE) != 0)
+            {
+                studioSystem.flushCommands(); // Any error will be returned through Studio.System.update
+
+                result = studioSystem.update();
+                if (result == FMOD.RESULT.ERR_NET_SOCKET_ERROR)
                 {
-                    // Always load strings bank
-                    try
-                    {
-                        LoadBank(fmodSettings.MasterBank + ".strings", fmodSettings.AutomaticSampleLoading);
-                    }
-                    catch (BankLoadException e)
-                    {
-                        UnityEngine.Debug.LogException(e);
-                    }
+                    studioInitFlags &= ~FMOD.Studio.INITFLAGS.LIVEUPDATE;
+                    UnityEngine.Debug.LogWarning("[FMOD] Cannot open network port for Live Update (in-use), restarting with Live Update disabled.");
 
-                    if (fmodSettings.AutomaticEventLoading)
-                    {
-                        try
-                        {
-                            LoadBank(fmodSettings.MasterBank, fmodSettings.AutomaticSampleLoading);
-                        }
-                        catch (BankLoadException e)
-                        {
-                            UnityEngine.Debug.LogException(e);
-                        }
+                    result = studioSystem.release();
+                    CheckInitResult(result, "FMOD.Studio.System.Release");
 
-                        foreach (var bank in fmodSettings.Banks)
-                        {
-                            try
-                            {
-                                LoadBank(bank, fmodSettings.AutomaticSampleLoading);
-                            }
-                            catch (BankLoadException e)
-                            {
-                                UnityEngine.Debug.LogException(e);
-                            }
-                        }
-
-                        WaitForAllLoads();
-                    }
+                    goto retry;
                 }
-            };
+            }
 
-            FMOD.ChannelGroup master;
-            lowlevelSystem.getMasterChannelGroup(out master);
-            master.getDSP(0, out mixerHead);
-            mixerHead.setMeteringEnabled(false, true);
+            LoadPlugins(fmodSettings);
+            LoadBanks(fmodSettings);
+
+            return initResult;
         }
         
-        class AttachedInstance            
+        class AttachedInstance
         {
             public FMOD.Studio.EventInstance instance;
             public Transform transform;
@@ -325,20 +299,18 @@ namespace FMODUnity
         List<AttachedInstance> attachedInstances = new List<AttachedInstance>(128);
 
         #if UNITY_EDITOR
-        Dictionary<IntPtr, bool> warnedInvalidInstances = new Dictionary<IntPtr, bool>(2048);
+        List<FMOD.Studio.EventInstance> eventPositionWarnings = new List<FMOD.Studio.EventInstance>();
         #endif
 
         bool listenerWarningIssued = false;
         void Update()
         {
-            if (studioSystem != null)
+            if (studioSystem.isValid())
             {
-                studioSystem.update();
-
                 bool foundListener = false;
                 bool hasAllListeners = false;
                 int numListeners = 0;
-                for (int i = FMOD.CONSTANTS.MAX_LISTENERS - 1; i >=0 ; i--)
+                for (int i = FMOD.CONSTANTS.MAX_LISTENERS - 1; i >= 0; i--)
                 {
                     if (!foundListener && HasListener[i])
                     {
@@ -361,7 +333,7 @@ namespace FMODUnity
                 if (!hasAllListeners && !listenerWarningIssued)
                 {
                     listenerWarningIssued = true;
-                    UnityEngine.Debug.LogWarning("FMOD Studio Integration: Please add an 'FMOD Studio Listener' component to your a camera in the scene for correct 3D positioning of sounds");
+                    UnityEngine.Debug.LogWarning("[FMOD] Please add an 'FMOD Studio Listener' component to your a camera in the scene for correct 3D positioning of sounds");
                 }
 
                 for (int i = 0; i < attachedInstances.Count; i++)
@@ -388,71 +360,47 @@ namespace FMODUnity
                     }
                 }
 
-                
                 #if UNITY_EDITOR
                 MuteAllEvents(UnityEditor.EditorUtility.audioMasterMute);
-                #endif
 
-
-                #if UNITY_EDITOR
-                // Catch any 3D events that are being played at the origin
-                foreach(FMOD.Studio.EventDescription desc in cachedDescriptions.Values)
+                for (int i = eventPositionWarnings.Count - 1; i >= 0; i--)
                 {
-                    if (!desc.isValid())
+                    if (eventPositionWarnings[i].isValid())
                     {
-                        continue;
-                    }
-                    bool is3d;
-                    desc.is3D(out is3d);
-                    if (!is3d)
-                    {
-                        continue;
-                    }
-
-                    string path;
-                    desc.getPath(out path);
-
-                    int instanceCount;
-                    desc.getInstanceCount(out instanceCount);
-                    FMOD.Studio.EventInstance[] instances = new FMOD.Studio.EventInstance[instanceCount];
-                    desc.getInstanceList(out instances);
-                    for (int i = 0; i < instances.Length; i++)
-                    {
-                        if (warnedInvalidInstances.ContainsKey(instances[i].getRaw()))
+                        FMOD.ATTRIBUTES_3D attribs;
+                        eventPositionWarnings[i].get3DAttributes(out attribs);
+                        if (attribs.position.x == 1e+18F &&
+                            attribs.position.y == 1e+18F &&
+                            attribs.position.z == 1e+18F)
                         {
-                            continue;
-                        }
-
-                        FMOD.ATTRIBUTES_3D attributes = new FMOD.ATTRIBUTES_3D();
-                        instances[i].get3DAttributes(out attributes);
-                        if (attributes.position.x == 0 &&
-                            attributes.position.y == 0 &&
-                            attributes.position.z == 0)
-                        {
-                            warnedInvalidInstances.Add(instances[i].getRaw(), true);
-#if UNITY_5_X
-                            Debug.LogWarningFormat("FMOD Studio: Instance of Event {0} found playing at the origin. EventInstance.set3DAttributes() should be called on all 3D events", path);
-#else
-                            Debug.LogWarning(string.Format("FMOD Studio: Instance of Event {0} found playing at the origin. EventInstance.set3DAttributes() should be called on all 3D events", path));
-#endif
+                            string path;
+                            FMOD.Studio.EventDescription desc;
+                            eventPositionWarnings[i].getDescription(out desc);
+                            desc.getPath(out path);
+                            Debug.LogWarningFormat("[FMOD] Instance of Event {0} has not had EventInstance.set3DAttributes() called on it yet!", path);
                         }
                     }
+                    eventPositionWarnings.RemoveAt(i);
                 }
                 #endif
+
+                studioSystem.update();
             }
         }
 
         public static void AttachInstanceToGameObject(FMOD.Studio.EventInstance instance, Transform transform, Rigidbody rigidBody)
         {
+            instance.set3DAttributes(RuntimeUtils.To3DAttributes(transform, rigidBody));
             var attachedInstance = new AttachedInstance();
             attachedInstance.transform = transform;
             attachedInstance.instance = instance;
             attachedInstance.rigidBody = rigidBody;
             Instance.attachedInstances.Add(attachedInstance);
         }
-        
+
         public static void AttachInstanceToGameObject(FMOD.Studio.EventInstance instance, Transform transform, Rigidbody2D rigidBody2D)
         {
+            instance.set3DAttributes(RuntimeUtils.To3DAttributes(transform, rigidBody2D));
             var attachedInstance = new AttachedInstance();
             attachedInstance.transform = transform;
             attachedInstance.instance = instance;
@@ -466,7 +414,7 @@ namespace FMODUnity
             var manager = Instance;
             for (int i = 0; i < manager.attachedInstances.Count; i++)
             {
-                if (manager.attachedInstances[i].instance == instance)
+                if (manager.attachedInstances[i].instance.handle == instance.handle)
                 {
                     manager.attachedInstances.RemoveAt(i);
                     return;
@@ -477,7 +425,7 @@ namespace FMODUnity
         Rect windowRect = new Rect(10, 10, 300, 100);
         void OnGUI()
         {
-            if (studioSystem != null && Settings.Instance.IsOverlayEnabled(fmodPlatform))
+            if (studioSystem.isValid() && Settings.Instance.IsOverlayEnabled(fmodPlatform))
             {
                 windowRect = GUI.Window(0, windowRect, DrawDebugOverlay, "FMOD Studio Debug");
             }
@@ -495,6 +443,13 @@ namespace FMODUnity
                 }
                 else
                 {
+                    if (!mixerHead.hasHandle())
+                    {
+                        FMOD.ChannelGroup master;
+                        lowlevelSystem.getMasterChannelGroup(out master);
+                        master.getDSP(0, out mixerHead);
+                        mixerHead.setMeteringEnabled(false, true);
+                    }
 
                     StringBuilder debug = new StringBuilder();
 
@@ -510,14 +465,14 @@ namespace FMODUnity
                     lowlevelSystem.getChannelsPlaying(out channels, out realchannels);
                     debug.AppendFormat("CHANNELS: real = {0}, total = {1}\n", realchannels, channels);
 
-                    FMOD.DSP_METERING_INFO metering = new FMOD.DSP_METERING_INFO();
-                    mixerHead.getMeteringInfo(null, metering);
+                    FMOD.DSP_METERING_INFO outputMetering;
+                    mixerHead.getMeteringInfo(IntPtr.Zero, out outputMetering);
                     float rms = 0;
-                    for (int i = 0; i < metering.numchannels; i++)
+                    for (int i = 0; i < outputMetering.numchannels; i++)
                     {
-                        rms += metering.rmslevel[i] * metering.rmslevel[i];
+                        rms += outputMetering.rmslevel[i] * outputMetering.rmslevel[i];
                     }
-                    rms = Mathf.Sqrt(rms / (float)metering.numchannels);
+                    rms = Mathf.Sqrt(rms / (float)outputMetering.numchannels);
 
                     float db = rms > 0 ? 20.0f * Mathf.Log10(rms * Mathf.Sqrt(2.0f)) : -80.0f;
                     if (db > 10.0f) db = 10.0f;
@@ -530,45 +485,152 @@ namespace FMODUnity
 
             GUI.Label(new Rect(10, 20, 290, 100), lastDebugText);
             GUI.DragWindow();
-        }        
-        
+        }
+
         void OnDisable()
         {
             // If we're being torn down for a script reload - cache the native pointers in something unity can serialize
-            cachedPointers[0] = (long)studioSystem.getRaw();
-            cachedPointers[1] = (long)lowlevelSystem.getRaw();
-            cachedPointers[2] = (long)mixerHead.getRaw();
+            cachedPointers[0] = (long)studioSystem.handle;
+            cachedPointers[1] = (long)lowlevelSystem.handle;
         }
 
         void OnDestroy()
         {
-            if (studioSystem != null)
+            if (studioSystem.isValid())
             {
-                UnityEngine.Debug.Log("FMOD Studio: Destroying runtime system instance");
                 studioSystem.release();
-                studioSystem = null;
+                studioSystem.clearHandle();
             }
             initException = null;
             instance = null;
-            isQuitting = true;
         }
-        
+
+#if UNITY_EDITOR
+        public static void Destroy()
+        {
+            if (instance)
+            {
+                if (instance.studioSystem.isValid())
+                {
+                    instance.studioSystem.release();
+                    instance.studioSystem.clearHandle();
+                }
+                DestroyImmediate(instance.gameObject);
+                initException = null;
+                instance = null;
+            }
+        }
+
+        #if UNITY_2017_2_OR_NEWER
+        void HandlePlayModeStateChange(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredEditMode)
+            {
+                Destroy();
+            }
+        }
+#elif UNITY_2017_1_OR_NEWER
+        void HandleOnPlayModeChanged()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                Destroy();
+            }
+        }
+#endif // UNITY_2017_2_OR_NEWER
+#endif
+
+#if UNITY_IOS
+        /* iOS alarm interruptions do not trigger OnApplicationPause
+         * Sending the app to the background does trigger OnApplicationFocus
+         * We don't want to use this on Android as other things (like the keyboard)
+         * can steal focus.
+         * https://docs.unity3d.com/ScriptReference/MonoBehaviour.OnApplicationFocus.html */
+
+        void OnApplicationFocus(bool focus)
+        {
+            if (studioSystem.isValid())
+            {
+                // Strings bank is always loaded
+                if (loadedBanks.Count > 1)
+                    PauseAllEvents(!focus);
+
+                if (focus)
+                {
+                    lowlevelSystem.mixerResume();
+                }
+                else
+                {
+                    lowlevelSystem.mixerSuspend();
+                }
+            }
+        }
+#else
         void OnApplicationPause(bool pauseStatus)
         {
-            if (studioSystem != null && studioSystem.isValid())
-			{
+            if (studioSystem.isValid())
+            {
                 PauseAllEvents(pauseStatus);
 
-				if (pauseStatus)
-				{
-					lowlevelSystem.mixerSuspend();
-				}
-				else
-				{
-					lowlevelSystem.mixerResume();
-				}
-			}
+                if (pauseStatus)
+                {
+                    lowlevelSystem.mixerSuspend();
+                }
+                else
+                {
+                    lowlevelSystem.mixerResume();
+                }
+            }
         }
+#endif
+
+        private void loadedBankRegister(LoadedBank loadedBank, string bankPath, string bankName, bool loadSamples, FMOD.RESULT loadResult)
+        {
+            if (loadResult == FMOD.RESULT.OK)
+            {
+                loadedBank.RefCount = 1;
+
+                if (loadSamples)
+                {
+                    loadedBank.Bank.loadSampleData();
+                }
+
+                Instance.loadedBanks.Add(bankName, loadedBank);
+            }
+            else if (loadResult == FMOD.RESULT.ERR_EVENT_ALREADY_LOADED)
+            {
+                // someone loaded this bank directly using the studio API
+                // TODO: will the null bank handle be an issue
+                loadedBank.RefCount = 2;
+                Instance.loadedBanks.Add(bankName, loadedBank);
+            }
+            else
+            {
+                throw new BankLoadException(bankPath, loadResult);
+            }
+        }
+
+#if UNITY_WEBGL
+        IEnumerator loadFromWeb(string bankPath, string bankName, bool loadSamples)
+        {
+            byte[] loadWebResult;
+            FMOD.RESULT loadResult;
+            
+            UnityEngine.Networking.UnityWebRequest www = UnityEngine.Networking.UnityWebRequest.Get(bankPath);
+            yield return www.SendWebRequest();
+            loadWebResult = www.downloadHandler.data;
+
+            LoadedBank loadedBank = new LoadedBank();
+            loadResult = Instance.studioSystem.loadBankMemory(loadWebResult, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out loadedBank.Bank);
+            if (loadResult != FMOD.RESULT.OK)
+            {
+                UnityEngine.Debug.LogWarningFormat("[FMOD] loadFromWeb.  Path = {0}, result = {1}.", bankPath, loadResult);
+            }
+            loadedBankRegister(loadedBank, bankPath, bankName, loadSamples, loadResult);
+
+            Debug.LogFormat("[FMOD] Finished loading {0}", bankPath);
+        }
+#endif
 
         public static void LoadBank(string bankName, bool loadSamples = false)
         {
@@ -581,10 +643,10 @@ namespace FMODUnity
                 {
                     loadedBank.Bank.loadSampleData();
                 }
+                Instance.loadedBanks[bankName] = loadedBank;
             }
             else
             {
-                LoadedBank loadedBank = new LoadedBank();
                 string bankPath = RuntimeUtils.GetBankPath(bankName);
                 FMOD.RESULT loadResult;
                 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -595,40 +657,28 @@ namespace FMODUnity
                         while (!www.isDone) { }
                         if (!String.IsNullOrEmpty(www.error))
                         {
-                            throw new BankLoadException(bankPath, www.error);  
+                            throw new BankLoadException(bankPath, www.error);
                         }
                         else
                         {
+                            LoadedBank loadedBank = new LoadedBank();
                             loadResult = Instance.studioSystem.loadBankMemory(www.bytes, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out loadedBank.Bank);
+                            Instance.loadedBankRegister(loadedBank, bankPath, bankName, loadSamples, loadResult);
                         }
                     }
+                }
+                else
+                #elif UNITY_WEBGL
+                if (bankPath.Contains("://"))
+                {
+                    Instance.StartCoroutine(Instance.loadFromWeb(bankPath, bankName, loadSamples));
                 }
                 else
                 #endif
                 {
+                    LoadedBank loadedBank = new LoadedBank();
                     loadResult = Instance.studioSystem.loadBankFile(bankPath, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out loadedBank.Bank);
-                }
-
-                if (loadResult == FMOD.RESULT.OK)
-                {
-                    loadedBank.RefCount = 1;
-                    Instance.loadedBanks.Add(bankName, loadedBank);
-
-                    if (loadSamples)
-                    {
-                        loadedBank.Bank.loadSampleData();
-                    }
-                }
-                else if (loadResult == FMOD.RESULT.ERR_EVENT_ALREADY_LOADED)
-                {
-                    // someone loaded this bank directly using the studio API
-                    // TODO: will the null bank handle be an issue
-                    loadedBank.RefCount = 2;
-                    Instance.loadedBanks.Add(bankName, loadedBank);                    
-                }
-                else
-                {
-                    throw new BankLoadException(bankPath, loadResult);
+                    Instance.loadedBankRegister(loadedBank, bankPath, bankName, loadSamples, loadResult);
                 }
             }
         }
@@ -675,6 +725,40 @@ namespace FMODUnity
             }
         }
 
+        private void LoadBanks(Settings fmodSettings)
+        {
+            if (fmodSettings.ImportType == ImportType.StreamingAssets)
+            {
+                // Always load strings bank
+                try
+                {
+                    foreach (string masterBankFileName in fmodSettings.MasterBanks)
+                    {
+                        LoadBank(masterBankFileName + ".strings", fmodSettings.AutomaticSampleLoading);
+
+                        if (fmodSettings.AutomaticEventLoading)
+                        {
+                            LoadBank(masterBankFileName, fmodSettings.AutomaticSampleLoading);
+                        }
+                    }
+
+                    if (fmodSettings.AutomaticEventLoading)
+                    {
+                        foreach (var bank in fmodSettings.Banks)
+                        {
+                            LoadBank(bank, fmodSettings.AutomaticSampleLoading);
+                        }
+
+                        WaitForAllLoads();
+                    }
+                }
+                catch (BankLoadException e)
+                {
+                    UnityEngine.Debug.LogException(e);
+                }
+            }
+        }
+
         public static void UnloadBank(string bankName)
         {
             LoadedBank loadedBank;
@@ -685,7 +769,9 @@ namespace FMODUnity
                 {
                     loadedBank.Bank.unload();
                     Instance.loadedBanks.Remove(bankName);
+                    return;
                 }
+                Instance.loadedBanks[bankName] = loadedBank;
             }
         }
 
@@ -700,7 +786,7 @@ namespace FMODUnity
             }
             return loading;
         }
-        
+
         public static void WaitForAllLoads()
         {
             Instance.studioSystem.flushSampleLoading();
@@ -723,12 +809,12 @@ namespace FMODUnity
             }
             return guid;
         }
-        
-        public static FMOD.Studio.EventInstance CreateInstance(string path) 
+
+        public static FMOD.Studio.EventInstance CreateInstance(string path)
         {
             try
             {
-                return CreateInstance(PathToGUID(path)); 
+                return CreateInstance(PathToGUID(path));
             }
             catch(EventNotFoundException)
             {
@@ -742,9 +828,21 @@ namespace FMODUnity
             FMOD.Studio.EventDescription eventDesc = GetEventDescription(guid);
             FMOD.Studio.EventInstance newInstance;
             eventDesc.createInstance(out newInstance);
+
+            #if UNITY_EDITOR
+            bool is3D = false;
+            eventDesc.is3D(out is3D);
+            if (is3D)
+            {
+                // Set position to 1e+18F, set3DAttributes should be called by the dev after this.
+                newInstance.set3DAttributes(RuntimeUtils.To3DAttributes(new Vector3(1e+18F, 1e+18F, 1e+18F)));
+                instance.eventPositionWarnings.Add(newInstance);
+            }
+            #endif
+
             return newInstance;
         }
-        
+
         public static void PlayOneShot(string path, Vector3 position = new Vector3())
         {
             try
@@ -753,8 +851,7 @@ namespace FMODUnity
             }
             catch (EventNotFoundException)
             {
-                // Switch from exception with GUID to exception with path
-                throw new EventNotFoundException(path);
+                Debug.LogWarning("[FMOD] Event not found: " + path);
             }
         }
 
@@ -774,8 +871,7 @@ namespace FMODUnity
             }
             catch (EventNotFoundException)
             {
-                // Switch from exception with GUID to exception with path
-                throw new EventNotFoundException(path);
+                Debug.LogWarning("[FMOD] Event not found: " + path);
             }
         }
 
@@ -801,7 +897,7 @@ namespace FMODUnity
 
         public static FMOD.Studio.EventDescription GetEventDescription(Guid guid)
         {
-            FMOD.Studio.EventDescription eventDesc = null;
+            FMOD.Studio.EventDescription eventDesc;
             if (Instance.cachedDescriptions.ContainsKey(guid) && Instance.cachedDescriptions[guid].isValid())
             {
                 eventDesc = Instance.cachedDescriptions[guid];
@@ -815,7 +911,7 @@ namespace FMODUnity
                     throw new EventNotFoundException(guid);
                 }
 
-                if (eventDesc != null && eventDesc.isValid())
+                if (eventDesc.isValid())
                 {
                     Instance.cachedDescriptions[guid] = eventDesc;
                 }
@@ -855,24 +951,20 @@ namespace FMODUnity
             Instance.studioSystem.setListenerAttributes(listenerIndex, transform.To3DAttributes());
         }
 
-        public static FMOD.Studio.Bus GetBus(String path)
+        public static FMOD.Studio.Bus GetBus(string path)
         {
-            FMOD.RESULT result;
             FMOD.Studio.Bus bus;
-            result = StudioSystem.getBus(path, out bus);
-            if (result != FMOD.RESULT.OK)
+            if (StudioSystem.getBus(path, out bus) != FMOD.RESULT.OK)
             {
                 throw new BusNotFoundException(path);
             }
             return bus;
         }
 
-        public static FMOD.Studio.VCA GetVCA(String path)
+        public static FMOD.Studio.VCA GetVCA(string path)
         {
-            FMOD.RESULT result;
             FMOD.Studio.VCA vca;
-            result = StudioSystem.getVCA(path, out vca);
-            if (result != FMOD.RESULT.OK)
+            if (StudioSystem.getVCA(path, out vca) != FMOD.RESULT.OK)
             {
                 throw new VCANotFoundException(path);
             }
@@ -881,25 +973,118 @@ namespace FMODUnity
 
         public static void PauseAllEvents(bool paused)
         {
-            GetBus("bus:/").setPaused(paused);
+            if (HasBanksLoaded)
+            {
+                FMOD.Studio.Bus masterBus;
+                if (StudioSystem.getBus("bus:/", out masterBus) == FMOD.RESULT.OK)
+                {
+                    masterBus.setPaused(paused);
+                }
+            }
         }
 
         public static void MuteAllEvents(bool muted)
         {
-            GetBus("bus:/").setMute(muted);
+            if (HasBanksLoaded)
+            {
+                FMOD.Studio.Bus masterBus;
+                if (StudioSystem.getBus("bus:/", out masterBus) == FMOD.RESULT.OK)
+                {
+                    masterBus.setMute(muted);
+                }
+            }
         }
 
         public static bool IsInitialized
         {
             get
             {
-                return instance != null && instance.studioSystem != null;
+                return instance != null && instance.studioSystem.isValid();
             }
         }
 
+
+        public static bool HasBanksLoaded
+        {
+            get
+            {
+                return Instance.loadedBanks.Count > 1; 
+            }
+        }
+
+        public static bool HasBankLoaded(string loadedBank)
+        {
+            return (instance.loadedBanks.ContainsKey(loadedBank));
+        }
+
+        private void LoadPlugins(Settings fmodSettings)
+        {
+            #if (UNITY_IOS || UNITY_TVOS) && !UNITY_EDITOR
+            FmodUnityNativePluginInit(lowlevelSystem.handle);
+            #else
+
+            FMOD.RESULT result;
+            foreach (var pluginName in fmodSettings.Plugins)
+            {
+                if (string.IsNullOrEmpty(pluginName))
+                    continue;
+                string pluginPath = RuntimeUtils.GetPluginPath(pluginName);
+                uint handle;
+                result = lowlevelSystem.loadPlugin(pluginPath, out handle);
+                #if UNITY_64 || UNITY_EDITOR_64
+                // Add a "64" suffix and try again
+                if (result == FMOD.RESULT.ERR_FILE_BAD || result == FMOD.RESULT.ERR_FILE_NOTFOUND)
+                {
+                    string pluginPath64 = RuntimeUtils.GetPluginPath(pluginName + "64");
+                    result = lowlevelSystem.loadPlugin(pluginPath64, out handle);
+                }
+                #endif
+                CheckInitResult(result, String.Format("Loading plugin '{0}' from '{1}'", pluginName, pluginPath));
+                loadedPlugins.Add(pluginName, handle);
+            }
+            #endif
+        }
+
+        private void SetThreadAffinity()
+        {
+            #if UNITY_PS4 && !UNITY_EDITOR
+            FMOD.PS4.THREADAFFINITY affinity = new FMOD.PS4.THREADAFFINITY
+            {
+                mixer = FMOD.PS4.THREAD.CORE0,
+                studioUpdate = FMOD.PS4.THREAD.CORE0,
+                studioLoadBank = FMOD.PS4.THREAD.CORE0,
+                studioLoadSample = FMOD.PS4.THREAD.CORE0
+            };
+            FMOD.RESULT result = FMOD.PS4.setThreadAffinity(ref affinity);
+            CheckInitResult(result, "FMOD.PS4.setThreadAffinity");
+
+            #elif UNITY_XBOXONE && !UNITY_EDITOR
+            FMOD.XboxOne.THREADAFFINITY affinity = new FMOD.XboxOne.THREADAFFINITY
+            {
+                mixer = FMOD.XboxOne.THREAD.CORE0,
+                studioUpdate = FMOD.XboxOne.THREAD.CORE0,
+                studioLoadBank = FMOD.XboxOne.THREAD.CORE0,
+                studioLoadSample = FMOD.XboxOne.THREAD.CORE0
+            };
+            FMOD.RESULT result = FMOD.XboxOne.setThreadAffinity(ref affinity);
+            CheckInitResult(result, "FMOD.XboxOne.setThreadAffinity");
+
+            #elif UNITY_SWITCH && !UNITY_EDITOR
+            FMOD.Switch.THREADAFFINITY affinity = new FMOD.Switch.THREADAFFINITY
+            {
+                mixer = FMOD.Switch.THREAD.CORE0,
+                studioUpdate = FMOD.Switch.THREAD.CORE0,
+                studioLoadBank = FMOD.Switch.THREAD.CORE0,
+                studioLoadSample = FMOD.Switch.THREAD.CORE0
+            };
+            FMOD.RESULT result = FMOD.Switch.setThreadAffinity(ref affinity);
+            CheckInitResult(result, "FMOD.Switch.setThreadAffinity");
+            #endif
+        }
+
         #if (UNITY_IOS || UNITY_TVOS) && !UNITY_EDITOR
-	    [DllImport("__Internal")]
-	    private static extern FMOD.RESULT FmodUnityNativePluginInit(IntPtr system);
+        [DllImport("__Internal")]
+        private static extern FMOD.RESULT FmodUnityNativePluginInit(IntPtr system);
         #endif
     }
 }

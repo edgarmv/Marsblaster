@@ -9,7 +9,6 @@ using System.Net.Sockets;
 
 namespace FMODUnity
 {
-
     public enum PreviewState
     {
         Stopped,
@@ -41,6 +40,32 @@ namespace FMODUnity
             else if (!String.IsNullOrEmpty(Settings.Instance.SourceBankPath))
             {
                 return Settings.Instance.SourceBankPath;
+            }
+            return null;
+        }
+
+        public static string GetBankDirectoryUnformatted()
+        {
+            if (Settings.Instance.HasSourceProject && !String.IsNullOrEmpty(Settings.Instance.SourceProjectPathUnformatted))
+            {
+                string projectPath = Settings.Instance.SourceProjectPathUnformatted;
+                char directorySeparator = '\\';
+                var folderIndex = projectPath.LastIndexOf(directorySeparator);
+                if (folderIndex < 0)
+                {
+                    directorySeparator = '/';
+                    folderIndex = projectPath.LastIndexOf(directorySeparator);
+                }
+                string projectFolder = "";
+                if (folderIndex > 0)
+                {
+                    projectFolder = projectPath.Substring(0, folderIndex);
+                }
+                return projectFolder + directorySeparator + BuildFolder;
+            }
+            else if (!String.IsNullOrEmpty(Settings.Instance.SourceBankPathUnformatted))
+            {
+                return Settings.Instance.SourceBankPathUnformatted;
             }
             return null;
         }
@@ -146,53 +171,74 @@ namespace FMODUnity
         }
 
         static EditorUtils()
-	    {
-            EditorApplication.update += Update;
-		    EditorApplication.playmodeStateChanged += HandleOnPlayModeChanged;
-	    }
-        
-
-        static void HandleOnPlayModeChanged()
-	    {
-            // Ensure we don't leak system handles in the DLL
-		    if (EditorApplication.isPlayingOrWillChangePlaymode &&
-			    !EditorApplication.isPaused)
-		    {
-        	    DestroySystem();
-		    }
-            
-            if (RuntimeManager.IsInitialized)
-            {
-                if (EditorApplication.isPlayingOrWillChangePlaymode)
-                {
-                    if (EditorApplication.isPaused)
-                    {
-                        RuntimeManager.GetBus("bus:/").setPaused(true);
-                        RuntimeManager.StudioSystem.update();
-                    }
-                    else
-                    {
-                        RuntimeManager.GetBus("bus:/").setPaused(false);
-                    }
-                }
-            }
-	    }
-
-        static void Update()
         {
-            // Ensure we don't leak system handles in the DLL
-            if (EditorApplication.isCompiling)
+            EditorApplication.update += Update;
+            #if UNITY_2017_2_OR_NEWER
+            EditorApplication.playModeStateChanged += HandleOnPlayModeChanged;
+            EditorApplication.pauseStateChanged += HandleOnPausedModeChanged;
+            #else
+            EditorApplication.playmodeStateChanged += HandleOnPlayModeChanged;
+            #endif
+        }
+
+        #if UNITY_2017_2_OR_NEWER
+        static void HandleOnPausedModeChanged(PauseState state)
+        {
+            if (RuntimeManager.IsInitialized && RuntimeManager.HasBanksLoaded)
+            {
+                RuntimeManager.GetBus("bus:/").setPaused(EditorApplication.isPaused);
+                RuntimeManager.StudioSystem.update();
+            }
+        }
+
+        static void HandleOnPlayModeChanged(PlayModeStateChange state)
+        {
+            // Entering Play Mode will cause scripts to reload, losing all state
+            // This is the last chance to clean up FMOD and avoid a leak.
+            if (state == PlayModeStateChange.ExitingEditMode)
             {
                 DestroySystem();
             }
+        }
+        #else
+        static void HandleOnPlayModeChanged()
+        {
+            // Entering Play Mode will cause scripts to reload, losing all state
+            // This is the last chance to clean up FMOD and avoid a leak.
+            if (EditorApplication.isPlayingOrWillChangePlaymode &&
+                !EditorApplication.isPaused)
+            {
+                DestroySystem();
+            }
+            
+            if (RuntimeManager.IsInitialized && RuntimeManager.HasBanksLoaded)
+            {
+                if (EditorApplication.isPlayingOrWillChangePlaymode)
+                {
+                    RuntimeManager.GetBus("bus:/").setPaused(EditorApplication.isPaused);
+                    RuntimeManager.StudioSystem.update();
+                }
+            }
+        }
+        #endif
+
+        static void Update()
+        {
+            // Compilation will cause scripts to reload, losing all state
+            // This is the last chance to clean up FMOD and avoid a leak.
+            if (EditorApplication.isCompiling)
+            {
+                DestroySystem();
+                RuntimeManager.Destroy();
+            }
 
             // Update the editor system
-            if (system != null && system.isValid())
+            if (system.isValid())
             {
                 CheckResult(system.update());
             }
 
-            if (previewEventInstance != null)
+            if (previewEventInstance.isValid())
             {
                 FMOD.Studio.PLAYBACK_STATE state;
                 previewEventInstance.getPlaybackState(out state);
@@ -207,11 +253,11 @@ namespace FMODUnity
 
         static void DestroySystem()
         {
-            if (system != null)
+            if (system.isValid())
             {
                 UnityEngine.Debug.Log("FMOD Studio: Destroying editor system instance");
                 system.release();
-                system = null;
+                system.clearHandle();
             }
         }
 
@@ -291,7 +337,7 @@ namespace FMODUnity
         {
             get
             {
-                if (system == null)
+                if (!system.isValid())
                 {
                     CreateSystem();
                 }
@@ -332,10 +378,10 @@ namespace FMODUnity
             uint version;
             CheckResult(lowlevel.getVersion(out version));
 
-            EditorUtility.DisplayDialog("FMOD Studio Unity Integration", "Version: " + VerionNumberToString(version) + "\n\nCopyright \u00A9 Firelight Technologies Pty, Ltd. 2014-2017 \n\nSee LICENSE.TXT for additional license information.", "OK");
+            EditorUtility.DisplayDialog("FMOD Studio Unity Integration", "Version: " + VerionNumberToString(version) + "\n\nCopyright \u00A9 Firelight Technologies Pty, Ltd. 2014-2019 \n\nSee LICENSE.TXT for additional license information.", "OK");
         }
 
-        static FMOD.Studio.Bank masterBank;
+        static List<FMOD.Studio.Bank> masterBanks = new List<FMOD.Studio.Bank>();
         static FMOD.Studio.Bank previewBank;
         static FMOD.Studio.EventDescription previewEventDesc;
         static FMOD.Studio.EventInstance previewEventInstance;
@@ -349,7 +395,7 @@ namespace FMODUnity
         public static void PreviewEvent(EditorEventRef eventRef)
         {
             bool load = true;
-            if (previewEventDesc != null)
+            if (previewEventDesc.isValid())
             {
                 Guid guid;
                 previewEventDesc.getID(out guid);
@@ -365,14 +411,22 @@ namespace FMODUnity
 
             if (load)
             {
-                CheckResult(System.loadBankFile(EventManager.MasterBank.Path, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out masterBank));
-                if (eventRef.Banks[0] != EventManager.MasterBank)
+                masterBanks.Clear();
+
+                foreach (EditorBankRef masterBankRef in EventManager.MasterBanks)
+                {
+                    FMOD.Studio.Bank masterBank;
+                    CheckResult(System.loadBankFile(masterBankRef.Path, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out masterBank));
+                    masterBanks.Add(masterBank);
+                }
+
+                if (!EventManager.MasterBanks.Exists(x => eventRef.Banks.Contains(x)))
                 {
                     CheckResult(System.loadBankFile(eventRef.Banks[0].Path, FMOD.Studio.LOAD_BANK_FLAGS.NORMAL, out previewBank));
                 }
                 else
                 {
-                    previewBank = null;
+                    previewBank.clearHandle();
                 }
 
                 CheckResult(System.getEventByID(eventRef.Guid, out previewEventDesc));
@@ -385,7 +439,7 @@ namespace FMODUnity
 
         public static void PreviewUpdateParameter(string paramName, float paramValue)
         {
-            if (previewEventInstance != null)
+			if (previewEventInstance.isValid())
             {
                 CheckResult(previewEventInstance.setParameterValue(paramName, paramValue));
             }
@@ -393,7 +447,7 @@ namespace FMODUnity
 
         public static void PreviewUpdatePosition(float distance, float orientation)
         {
-            if (previewEventInstance != null)
+            if (previewEventInstance.isValid())
             {
                 // Listener at origin
                 FMOD.ATTRIBUTES_3D pos = new FMOD.ATTRIBUTES_3D();
@@ -407,7 +461,7 @@ namespace FMODUnity
 
         public static void PreviewPause()
         {
-            if (previewEventInstance != null)
+            if (previewEventInstance.isValid())
             {
                 bool paused;
                 CheckResult(previewEventInstance.getPaused(out paused));
@@ -418,19 +472,18 @@ namespace FMODUnity
 
         public static void PreviewStop()
         {
-            if (previewEventInstance != null)
+            if (previewEventInstance.isValid())
             {
                 previewEventInstance.stop(FMOD.Studio.STOP_MODE.IMMEDIATE);
                 previewEventInstance.release();
-                previewEventInstance = null;
-                previewEventDesc = null;
-                if (previewBank != null)
+                previewEventInstance.clearHandle();
+                previewEventDesc.clearHandle();
+                if (previewBank.isValid())
                 {
                     previewBank.unload();
                 }
-                masterBank.unload();
-                masterBank = null;
-                previewBank = null;
+                masterBanks.ForEach(x => { x.unload(); x.clearHandle(); });
+                previewBank.clearHandle();
                 previewState = PreviewState.Stopped;
             }
         }
@@ -444,9 +497,8 @@ namespace FMODUnity
             FMOD.DSP masterHead;
             CheckResult(master.getDSP(FMOD.CHANNELCONTROL_DSP_INDEX.HEAD, out masterHead));
 
-            FMOD.DSP_METERING_INFO inputMetering = null;
-            FMOD.DSP_METERING_INFO outputMetering = new FMOD.DSP_METERING_INFO();
-            CheckResult(masterHead.getMeteringInfo(inputMetering, outputMetering));
+            FMOD.DSP_METERING_INFO outputMetering;
+            CheckResult(masterHead.getMeteringInfo(IntPtr.Zero, out outputMetering));
 
             FMOD.SPEAKERMODE mode;
             int rate, raw;

@@ -1,14 +1,13 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using System;
-
+using System.IO;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace FMODUnity
 {
-
 
     [Serializable]
     public enum FMODPlatform
@@ -31,9 +30,10 @@ namespace FMODUnity
         PS4,
         WiiU,
         PSVita,
-		AppleTV,
+        AppleTV,
         UWP,
         Switch,
+        WebGL,
         Count,
     }
 
@@ -76,7 +76,7 @@ namespace FMODUnity
     public class PlatformBoolSetting : PlatformSetting<TriStateBool>
     {
     }
-    
+
     #if UNITY_EDITOR
     [InitializeOnLoad]
     #endif
@@ -95,7 +95,7 @@ namespace FMODUnity
                     instance = Resources.Load(SettingsAssetName) as Settings;
                     if (instance == null)
                     {
-                        UnityEngine.Debug.Log("FMOD Studio: cannot find integration settings, creating default settings");
+                        UnityEngine.Debug.Log("[FMOD] Cannot find integration settings, creating default settings");
                         instance = CreateInstance<Settings>();
                         instance.name = "FMOD Studio Integration Settings";
 
@@ -112,29 +112,67 @@ namespace FMODUnity
             }
         }
 
-            
-	    #if UNITY_EDITOR
+        #if UNITY_EDITOR
         [MenuItem("FMOD/Edit Settings", priority = 0)]
         public static void EditSettings()
-	    {
-	        Selection.activeObject = Instance;
+        {
+            Selection.activeObject = Instance;
+            #if UNITY_2018_2_OR_NEWER
+            EditorApplication.ExecuteMenuItem("Window/General/Inspector");
+            #else
             EditorApplication.ExecuteMenuItem("Window/Inspector");
+            #endif
         }
         #endif
-
 
         [SerializeField]
         public bool HasSourceProject = true;
 
         [SerializeField]
         public bool HasPlatforms = true;
-        
-        [SerializeField]
-        public string SourceProjectPath;
 
         [SerializeField]
-        public string SourceBankPath;
-        
+        private string sourceProjectPath;
+
+        public string SourceProjectPath
+        {
+            get
+            {
+                if (String.IsNullOrEmpty(sourceProjectPath) && !String.IsNullOrEmpty(SourceProjectPathUnformatted))
+                {
+                    sourceProjectPath = GetPlatformSpecificPath(SourceProjectPathUnformatted);
+                }
+                return sourceProjectPath;
+            }
+            set
+            {
+                sourceProjectPath = GetPlatformSpecificPath(value);
+            }
+        }
+
+        [SerializeField]
+        public string SourceProjectPathUnformatted;
+
+        private string sourceBankPath;
+        public string SourceBankPath
+        {
+            get
+            {
+                if (String.IsNullOrEmpty(sourceBankPath) && !String.IsNullOrEmpty(SourceBankPathUnformatted))
+                {
+                    sourceBankPath = GetPlatformSpecificPath(SourceBankPathUnformatted);
+                }
+                return sourceBankPath;
+            }
+            set
+            {
+            	sourceBankPath = GetPlatformSpecificPath(value);
+            }
+        }
+
+        [SerializeField]
+        public string SourceBankPathUnformatted;
+
         [SerializeField]
         public bool AutomaticEventLoading;
 
@@ -146,6 +184,9 @@ namespace FMODUnity
 
         [SerializeField]
         public string TargetAssetPath;
+
+        [SerializeField]
+        public FMOD.DEBUG_FLAGS LoggingLevel = FMOD.DEBUG_FLAGS.WARNING;
 
         [SerializeField]
         public List<PlatformIntSetting> SpeakerModeSettings;
@@ -175,7 +216,7 @@ namespace FMODUnity
         public List<string> Plugins = new List<string>();
 
         [SerializeField]
-        public string MasterBank;
+        public List<string> MasterBanks;
 
         [SerializeField]
         public List<string> Banks;
@@ -194,8 +235,8 @@ namespace FMODUnity
                 case FMODPlatform.iOS:
                 case FMODPlatform.Android:
                 case FMODPlatform.WindowsPhone:
-				case FMODPlatform.PSVita:
-			    case FMODPlatform.AppleTV:
+                case FMODPlatform.PSVita:
+                case FMODPlatform.AppleTV:
                 case FMODPlatform.Switch:
                     return FMODPlatform.Mobile;
                 case FMODPlatform.XboxOne:
@@ -272,7 +313,6 @@ namespace FMODUnity
             return GetSetting(OverlaySettings, platform, TriStateBool.Disabled) == TriStateBool.Enabled;
             #endif
         }
-        
 
         // --------   Real channels ----------------------
         public int GetRealChannels(FMODPlatform platform)
@@ -324,9 +364,10 @@ namespace FMODUnity
                 return GetSetting(BankDirectorySettings, platform, "Desktop");
             }
         }
- 
+
         private Settings()
         {
+            MasterBanks = new List<string>();
             Banks = new List<string>();
             RealChannelSettings = new List<PlatformIntSetting>();
             VirtualChannelSettings = new List<PlatformIntSetting>();
@@ -341,6 +382,7 @@ namespace FMODUnity
             SetSetting(LoggingSettings, FMODPlatform.PlayInEditor, TriStateBool.Enabled);
             SetSetting(LiveUpdateSettings, FMODPlatform.PlayInEditor, TriStateBool.Enabled);
             SetSetting(OverlaySettings, FMODPlatform.PlayInEditor, TriStateBool.Enabled);
+            SetSetting(SampleRateSettings, FMODPlatform.PlayInEditor, 48000);
             // These are not editable, set them high
             SetSetting(RealChannelSettings, FMODPlatform.PlayInEditor, 256);
             SetSetting(VirtualChannelSettings, FMODPlatform.PlayInEditor, 1024);
@@ -359,6 +401,20 @@ namespace FMODUnity
             AutomaticEventLoading = true;
             AutomaticSampleLoading = false;
             TargetAssetPath = "";
+        }
+
+        private string GetPlatformSpecificPath(string path)
+        {
+            if (String.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+
+            if (Path.DirectorySeparatorChar == '/')
+            {
+                return path.Replace('\\', '/');
+            }
+            return path.Replace('/', '\\');
         }
     }
 

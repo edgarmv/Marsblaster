@@ -11,7 +11,7 @@ namespace FMODUnity
         static void ShowFindAndReplace()
         {
             var window = CreateInstance<FindAndReplace>();
-            #if UNITY_4_6 || UNITY_4_7
+            #if UNITY_5_0 || UNITY_5_1
             window.title = "FMOD Find and Replace";
             #else
             window.titleContent = new GUIContent("FMOD Find and Replace");
@@ -38,13 +38,21 @@ namespace FMODUnity
 
             if (!levelScope)
             {
+                #if UNITY_2018_3_OR_NEWER
+                emitters.RemoveAll(x => PrefabUtility.GetPrefabAssetType(x) == PrefabAssetType.NotAPrefab);
+                #else
                 emitters.RemoveAll(x => PrefabUtility.GetPrefabType(x) != PrefabType.Prefab);
+                #endif
             }
 
             if (!prefabScope)
             {
-                emitters.RemoveAll(x => PrefabUtility.GetPrefabType(x) == PrefabType.Prefab);
-            }            
+                #if UNITY_2018_3_OR_NEWER
+                emitters.RemoveAll(x => PrefabUtility.GetPrefabAssetType(x) == PrefabAssetType.NotAPrefab);
+                #else
+                emitters.RemoveAll(x => PrefabUtility.GetPrefabType(x) != PrefabType.Prefab);
+                #endif
+            }
         }
 
         bool first = true;

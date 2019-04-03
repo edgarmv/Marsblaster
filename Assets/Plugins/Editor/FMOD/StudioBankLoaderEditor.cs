@@ -9,7 +9,7 @@ namespace FMODUnity
 {
     [CustomEditor(typeof(StudioBankLoader))]
     [CanEditMultipleObjects]
-    class StudioBankLoaderEditor : Editor
+    public class StudioBankLoaderEditor : Editor
     {
         public override void OnInspectorGUI()
         {
@@ -43,8 +43,8 @@ namespace FMODUnity
 
                 var browser = EventBrowser.CreateInstance<EventBrowser>();
 
-                #if UNITY_4_6 || UNITY_4_7
-				browser.title  = "Select FMOD Bank";
+                #if UNITY_5_0 || UNITY_5_1
+                browser.title  = "Select FMOD Bank";
                 #else
                 browser.titleContent = new GUIContent("Select FMOD Bank");
                 #endif
@@ -78,7 +78,11 @@ namespace FMODUnity
             EditorGUILayout.EndHorizontal();
 
             Event e = Event.current;
+            #if UNITY_2017_3_OR_NEWER
             if (e.type == EventType.DragPerform)
+            #else
+            if (e.type == EventType.dragPerform)
+            #endif
             {
                 if (DragAndDrop.objectReferences.Length > 0 &&
                     DragAndDrop.objectReferences[0] != null &&
