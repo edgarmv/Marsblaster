@@ -46,24 +46,35 @@ public class GameController : MonoBehaviour
     private static Timer splashTimer = new System.Timers.Timer();
     private static Timer gameTimer = new System.Timers.Timer();
 
+    private ElapsedEventHandler shipElapsed;
+    private ElapsedEventHandler scoreElapsed;
+    private ElapsedEventHandler splashElapsed;
+    private ElapsedEventHandler gameElapsed;
+
     private static Boolean shipSpawn = false;
     
     private static System.Random randomGenerator = new System.Random();
 
     void Start()
     {
+
+        shipElapsed = new ElapsedEventHandler(OnShipTimedEvent);
+        scoreElapsed = new ElapsedEventHandler(OnScoreTimedEvent);
+        splashElapsed = new ElapsedEventHandler(OnSplashTimedEvent);
+        gameElapsed = new ElapsedEventHandler(OnGameTimedEvent);
+
+        shipTimer.Elapsed += shipElapsed;
+        scoreTimer.Elapsed += scoreElapsed;
+        splashTimer.Elapsed += splashElapsed;
+        gameTimer.Elapsed += gameElapsed;
         scoreBoard.text = "Score: " + score.ToString();
         StartGame();
-        shipTimer.Elapsed += new ElapsedEventHandler(OnShipTimedEvent);
         shipTimer.Interval = 5000;
 
-        scoreTimer.Elapsed += new ElapsedEventHandler(OnScoreTimedEvent);
         scoreTimer.Interval = 10000;
 
-        splashTimer.Elapsed += new ElapsedEventHandler(OnSplashTimedEvent);
         splashTimer.Interval = 1000;
 
-        gameTimer.Elapsed += new ElapsedEventHandler(OnGameTimedEvent);
         gameTimer.Interval = 1000;
         gameTimer.Enabled = true;
 
@@ -129,6 +140,17 @@ public class GameController : MonoBehaviour
         }
         timeText.text = "Time: " + roundTime;
 
+    }
+
+
+
+
+    void OnDisable()
+    {
+        shipTimer.Elapsed -= shipElapsed;
+        scoreTimer.Elapsed -= scoreElapsed;
+        splashTimer.Elapsed -= splashElapsed;
+        gameTimer.Elapsed -= gameElapsed;
     }
 
     void CreateNewQuestion() {

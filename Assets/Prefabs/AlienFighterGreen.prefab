@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 8824030765362983657}
   - component: {fileID: 2893960358408852132}
   - component: {fileID: 2713807655732976777}
+  - component: {fileID: 4366128564349563162}
   m_Layer: 0
   m_Name: AlienFighterGreen
   m_TagString: Untagged
@@ -111,6 +112,29 @@ MonoBehaviour:
   correctAnswer: 0
   flashTime: 0
   renderer: {fileID: 0}
+--- !u!114 &4366128564349563162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3343783904023146295}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a6610d2e704f1648819acc8d7460285, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Event: event:/Lydeffekt_skurk_treff
+  PlayEvent: 7
+  StopEvent: 8
+  CollisionTag: 
+  AllowFadeout: 1
+  TriggerOnce: 0
+  Preload: 0
+  Params: []
+  OverrideAttenuation: 0
+  OverrideMinDistance: 1
+  OverrideMaxDistance: 20
 --- !u!1 &6896690028974235370
 GameObject:
   m_ObjectHideFlags: 0

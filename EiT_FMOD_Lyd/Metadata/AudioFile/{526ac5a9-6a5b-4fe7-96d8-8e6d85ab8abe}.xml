@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.01.10.00">
+    <object class="AudioFile" id="{526ac5a9-6a5b-4fe7-96d8-8e6d85ab8abe}">
+        <property name="assetPath">
+            <value>Logic_Lydarbeid_romskip_skutt.wav</value>
+        </property>
+        <property name="isStreaming">
+            <value>true</value>
+        </property>
+        <property name="frequencyInKHz">
+            <value>44.0999985</value>
+        </property>
+        <property name="channelCount">
+            <value>2</value>
+        </property>
+        <property name="length">
+            <value>13.364353741496599</value>
+        </property>
+        <relationship name="masterAssetFolder">
+            <destination>{ba2bc0f1-5f3d-414d-a80f-a037a2def091}</destination>
+        </relationship>
+    </object>
+</objects>
