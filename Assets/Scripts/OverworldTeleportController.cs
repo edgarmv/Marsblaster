@@ -22,6 +22,7 @@ public class OverworldTeleportController : MonoBehaviour
     {
         if (collision.gameObject.tag == "Bullet")
         {
+            SceneManager.UnloadSceneAsync("Mars");
             SceneManager.LoadScene("inside", LoadSceneMode.Single);
         }
     }

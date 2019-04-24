@@ -79,6 +79,7 @@ public class MenuButton : MonoBehaviour
         yield return StartCoroutine(m_CameraFade.BeginFadeOut(true));
 
         // Load the level.
+        SceneManager.UnloadSceneAsync("inside");
         SceneManager.LoadScene(m_SceneToLoad, LoadSceneMode.Single);
     }
 }
